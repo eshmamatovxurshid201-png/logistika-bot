@@ -1,0 +1,14 @@
+[
+  {
+    "external_key": "demo-import-001",
+    "kind": "cargo",
+    "origin": {"country": "O‘zbekiston", "city": "Toshkent"},
+    "destinations": [{"country": "O‘zbekiston", "city": "Samarqand"}],
+    "vehicles": ["tent", "ref"],
+    "description": "DEMO: qoplangan mahsulot",
+    "capacity": "20 t, 96 m³",
+    "price": "Kelishiladi",
+    "phone": "+998000000000",
+    "demo": true
+  }
+]
