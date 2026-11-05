@@ -7,3 +7,5 @@ backups
 tests
 **/__pycache__
 *.sqlite*
+*.session*
+*.private.json

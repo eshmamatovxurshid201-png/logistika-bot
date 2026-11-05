@@ -9,6 +9,19 @@ services:
     restart: unless-stopped
     init: true
     stop_grace_period: 30s
+  collector:
+    build: .
+    profiles: [collector]
+    env_file: .env
+    environment:
+      DATABASE_PATH: /app/data/bot.sqlite3
+      COLLECTOR_SESSION: /app/data/collector
+    volumes:
+      - bot-data:/app/data
+    command: [python, -m, logistika_bot, collect]
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
 
 volumes:
   bot-data:

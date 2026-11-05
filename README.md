@@ -1,27 +1,34 @@
 # Logistika Bot
 
-Telegram’da yuk va transport topish, e’lon qo‘shish va kontaktlarni obuna orqali ochish uchun ishlaydigan boshlang‘ich loyiha. Menyular foydalanuvchi taqdim etgan logistika boti ekranlari asosida tuzilgan.
+Telegram’da yuk va transport e’lonlarini yig‘ish, saralash va obunadan keyin ko‘rsatish uchun Python 3.12 loyihasi.
 
-Python 3.12+, aiogram 3.31, SQLite. Bitta server va bitta polling jarayoni uchun mo‘ljallangan. Qidiruvlar, e’lon qoralamalari, obunalar va to‘lovlar bazada saqlanadi. Boshlash uchun alohida ma’lumotlar bazasi serveri yoki domen talab qilinmaydi.
+## Asosiy oqim
 
-## Tayyor imkoniyatlar
+1. Foydalanuvchi 1, 2, 3 yoki 6 oylik tarifni tanlaydi.
+2. Sozlangan karta rekvizitlarini oladi va chekni rasm yoki PDF qilib yuboradi.
+3. Admin Telegram ichidagi paneldan chekni ochadi, bankdagi tushumni tekshiradi va muddatni tasdiqlaydi yoki sabab bilan rad etadi.
+4. Faqat tasdiqdan keyin qidiruv, e’lonlar ro‘yxati, Batafsil, telefon va manba havolalari ochiladi.
+5. Obuna tugasa, eski qidiruv va kartochka tugmalari ham yangi so‘rovda ma’lumot bermaydi.
 
-- Bosh menyu, Tezkor Qidiruv, Yuk topish va Moshina topish.
-- 15 ta transport toifasi; bir e’londa bir nechta avto turi.
-- Yo‘nalish, bitta joy, mamlakat va shahar bo‘yicha qidiruv. Lotin/kirill va asosiy nom variantlari.
-- Hududlar bo‘yicha haqiqiy sonlar va Asia/Tashkent bo‘yicha bugungi e’lonlar.
-- Beshtadan natija, barqaror qidiruv ro‘yxati, davom ettirish va kartochkaga qaytish.
-- Batafsil matn, telefon kontakt kartasi, mavjud Telegram manba havolasi.
-- Noyob foydalanuvchilar bo‘yicha ko‘rish va raqam ochish hisoblagichlari.
-- E’lonni bosqichma-bosqich qo‘shish, bir nechta manzil, sana/hajm/narx, tasdiqlash, o‘z e’lonini yopish.
-- Pullik kirish, admin tomonidan obuna berish va Telegram Stars bilan bir martalik kirish sotish.
-- To‘lovning foydalanuvchi/summa/valyutasini tekshirish va bir tranzaksiyani takror hisoblamaslik.
-- Ruxsat berilgan kanallardagi kelishilgan format, JSON import va admin boshqaruvi.
-- Docker sozlamasi, SQLite zaxiralash buyrug‘i va avtomatik testlar.
+Chek yuborishning o‘zi to‘lov tasdiqlanishi emas. Bank integratsiyasi va avtomatik chek/OCR tasdiqlashi yo‘q. Bir chekni ikki admin tasdiqlasa ham muddat bir marta qo‘shiladi; tasdiqlash tarixi bazada yoziladi.
+
+Muddat 30 kunlik ko‘paytma bilan emas, kalendar oy bo‘yicha hisoblanadi. Masalan, 2028-yil 31-yanvardan 1 oy — 29-fevralgacha. Amaldagi obuna yangilansa uning tugashidan davom etadi. 0 narxli tarif sotuvga chiqmaydi; haqiqiy narxlarni egasi belgilaydi.
+
+## Imkoniyatlar
+
+- Yuk va mashina qidirish, 15 transport toifasi, bir yoki ikki joyli yo‘nalish.
+- Lotin/kirill yozuvi va asosiy joy nomi variantlari.
+- Hududlar bo‘yicha haqiqiy hisoblagichlar va Asia/Tashkent bo‘yicha bugungi e’lonlar.
+- Beshtadan natija, qidiruvni saqlash, Batafsil va kartochkaga qaytish.
+- Telefon kontakt kartasi va mavjud manba xabari.
+- Bot orqali e’lon qo‘shish, o‘z e’lonini ko‘rish/yopish. Muallif o‘z e’lonini boshqara oladi.
+- Qo‘lda karta/chek tasdiqlashi, to‘rtta tarif va admin panel.
+- Tanlangan guruhlardan yangi post/tahrirlarni yig‘ish, doimiy navbat, saralash va takrorlarini birlashtirish.
+- Noaniq xabarlar uchun admin tekshiruvi, tahrirlash va chop etish.
+- SQLite v1 bazasini ma’lumotlarni saqlagan holda v2 ga yangilash.
+- JSON import, DEMO, zaxira buyrug‘i va Docker sozlamasi.
 
 ## Kompyuterda ishga tushirish
-
-Repozitoriyni yuklab, uning papkasida terminal oching:
 
 ```bash
 git clone https://github.com/eshmamatovxurshid201-png/logistika-bot.git
@@ -29,23 +36,39 @@ cd logistika-bot
 python -m venv .venv
 ```
 
-Windows PowerShell’da virtual muhitni faollashtirmasdan ham quyidagilar ishlaydi:
+Windows PowerShell:
 
 ```powershell
-.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe -m pip install -r requirements-collector.txt
 Copy-Item .env.example .env
 ```
 
-Linux/macOS’da:
+Linux/macOS:
 
 ```bash
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements-collector.txt
 cp .env.example .env
 ```
 
-`.env`ni matn muharririda oching. BotFather orqali olingan tokenni `BOT_TOKEN=`dan keyin yozing. Haqiqiy `.env` GitHub’ga yuborilmaydi. `PAID_ACCESS=false` qilib dastlab ochiq rejimda tekshirish mumkin.
+Keyingi buyruqlarda Windows uchun `.venv\Scripts\python.exe`, Linux/macOS uchun `.venv/bin/python` ishlating. Virtual muhit faollashtirilsa oddiy `python` ham ishlaydi.
 
-Keyingi buyruqlarda Windows’da `.venv\Scripts\python.exe`, Linux/macOS’da `.venv/bin/python` ishlating. Quyida qisqalik uchun `python` deb ko‘rsatilgan; virtual muhit faollashtirilgan bo‘lsa shu shakl ham ishlaydi.
+`.env`da quyidagilarni to‘ldiring:
+
+| Sozlama | Ma’nosi |
+| --- | --- |
+| BOT_TOKEN | BotFather tokeni |
+| ADMIN_IDS | Adminlarning raqamli Telegram ID’lari, vergul bilan |
+| PAYMENT_MODE=manual | Karta va chek oqimi |
+| PAYMENT_CARD_NUMBER | To‘lov kartasi |
+| PAYMENT_CARD_HOLDER | Karta egasi |
+| TARIFF_1_MONTH_UZS | 1 oylik narx, butun so‘mda |
+| TARIFF_2_MONTH_UZS | 2 oylik narx |
+| TARIFF_3_MONTH_UZS | 3 oylik narx |
+| TARIFF_6_MONTH_UZS | 6 oylik narx |
+| SUPPORT_USERNAME | Yordam akkaunti, havola o‘rniga username |
+| PAID_ACCESS=true | Barcha qidiruv/e’lonlar uchun obuna tekshirish |
+
+Musbat karta tariflari uchun karta, egasi, admin va support sozlanishi shart. Faqat mahalliy sinovda `PAID_ACCESS=false` qilish mumkin. Ishlaydigan xizmatda `true` qoldiring.
 
 ```bash
 python -m logistika_bot check
@@ -53,66 +76,85 @@ python -m logistika_bot init-db
 python -m logistika_bot run
 ```
 
-Telegram’da o‘z botingizni ochib `/start` yuboring. `/id` sizning raqamli Telegram ID’ingizni qaytaradi. Uni `.env`dagi `ADMIN_IDS=`ga yozing va botni qayta ishga tushiring. Bir nechta admin ID vergul bilan ajratiladi.
+Botda `/id` o‘z ID’ingizni ko‘rsatadi. ADMIN_IDS’ga kiritib, botni qayta ishga tushiring. Dastlab narxlarni 0 qoldirib /id olish mumkin. Yangi bazada haqiqiy e’lonlar bo‘lmaydi; ular foydalanuvchi, import yoki yig‘uvchi orqali keladi.
 
-Sinov e’lonlari kerak bo‘lsa, botni ishga tushirishdan oldin:
+## Telegram admin paneli
 
-```bash
-python -m logistika_bot seed-demo
-```
+Admin `/admin` yuboradi:
 
-Bu buyruq 9 ta aniq DEMO deb belgilangan namuna yaratadi. Raqamlari haqiqiy aloqa uchun emas. Demo avtomatik yuklanmaydi; haqiqiy xizmat uchun yangi bo‘sh bazadan boshlang yoki admin `/hide ELON_ID` bilan namunalarni yopsin. `seed-demo` qayta bajarilganda nusxalar ko‘paymaydi.
-
-## Pullik rejim
-
-`.env` standartida `PAID_ACCESS=true`, `PLAN_PRICE_STARS=0`: ro‘yxatlar ochiq, boshqa foydalanuvchi e’lonining batafsil matni, raqami va manba havolasi obuna bilan. E’lon berish ochiq. Admin va e’lon egasi o‘z ma’lumotini ko‘ra oladi. `0` avtomatik sotuvni o‘chiradi; bu bepul tarif narxi degani emas.
-
-Qo‘lda sinash uchun admin botga:
+- **To‘lov cheklari:** navbat → chek rasmi/PDF → 1/2/3/6 oy → yakuniy tasdiq.
+- **Rad etish:** sabab foydalanuvchiga yuboriladi, kirish ochilmaydi.
+- **Saralash navbati:** noaniq asl matnni ko‘rish, tasdiqlash, tuzatib chop etish yoki o‘tkazish.
+- **Guruhlar:** ro‘yxat, holatini yoqish/o‘chirish va yangi ID qo‘shish.
+- Hisoblagichlar: faol obuna, chek, manba, navbat va takroriy e’lonlar.
 
 ```text
-/grant FOYDALANUVCHI_ID 30
+/grant_months FOYDALANUVCHI_ID 1
+/grant_months FOYDALANUVCHI_ID 2
+/grant_months FOYDALANUVCHI_ID 3
+/grant_months FOYDALANUVCHI_ID 6
 /revoke FOYDALANUVCHI_ID
+/hide ELON_ID
+/sources
+/template
 ```
 
-Stars orqali sotuvni yoqish uchun o‘zingiz tanlagan musbat butun `PLAN_PRICE_STARS`, `PLAN_DAYS` va haqiqiy `SUPPORT_USERNAME`ni kiriting. Standart 30 kun namuna sozlama bo‘lib, boshqa botning tasdiqlangan tarifi emas. Yordam akkaunti yozilmaguncha pullik sotuv sozlamasi qabul qilinmaydi.
+Oldingi versiyadagi `/grant ID KUN` buyrug‘i moslik uchun saqlangan. Yangi tariflar uchun oyli buyruq yoki chek panelini ishlating. Chek faqat adminlarga ochiladi; fayl Telegram file_id bilan saqlanadi, ochiq GitHub yoki veb havolaga yuklanmaydi. Bir xil Telegram fayli qayta ishlatilsa qabul qilinmaydi, ammo faylni o‘zgartirish yangi identifikator berishi mumkin — bank tushumini admin tekshirishi zarur.
 
-Foydalanuvchi `Sozlamalar → Obuna` yoki `/subscribe` orqali shartlarni qabul qiladi va Telegram hisobini oladi. Kirish faqat `successful_payment` kelgandan keyin ochiladi. To‘lov takror yetib kelsa obuna ikkinchi marta uzaymaydi. Mavjud obuna ustiga yangi muddat qo‘shiladi. Avtomatik takroriy yechish yo‘q. Eski kontakt tugmalari ham joriy kirish huquqini tekshiradi.
+## Taxminan 500 guruhni kuzatish
 
-`/terms` va `/paysupport` mavjud. Ishga chiqarishdan oldin `ui.terms()`dagi xizmat shartlarini o‘z faoliyatingizga moslashtiring. Qaytarish so‘rovlari support orqali boshqariladi; avtomatik refund buyrug‘i bu versiyaga kiritilmagan. To‘lovni avval Telegram test muhitida tekshiring. Mahalliy testlar haqiqiy Stars sarflamaydi.
+Oddiy Bot API istalgan guruh tarixini ochmaydi. Alohida **Telethon yig‘uvchi** o‘z Telegram akkauntingizning sessiyasi bilan ishlaydi. U faqat ro‘yxatdagi va akkaunt kirish huquqiga ega bo‘lgan guruhlardan kelgan yangi postlarni oladi. Guruhga avtomatik qo‘shilish, limitlarni chetlab o‘tish yoki shaxsiy yozishmalarga xabar yuborish amalga oshirilmaydi.
 
-Rasmiy to‘lov tartibi: [Telegram Stars](https://core.telegram.org/bots/payments-stars).
-
-## Qidiruv qoidalari
-
-`Toshkent` — jo‘nash yoki yetib borish tomonida Toshkent bo‘lgan e’lonlar.
-
-`Toshkent Samarqand` yoki `Toshkent → Samarqand` — aynan shu tartibdagi yo‘nalish. `Ташкент Самарканд` ham shu joylarga bog‘lanadi.
-
-Lug‘atda yo‘q shahar: `Turkiya / Gebze`. To‘liq yo‘nalish: `Turkiya / Gebze → O‘zbekiston / Toshkent`. Bir nechta manzil e’lon qo‘shishda `;` bilan yoziladi.
-
-Transportlar geografik bo‘limda jo‘nash joyi bo‘yicha guruhlanadi. Bo‘sh shahar maydoni `boshqa` guruhiga kiradi. Sonlar bir xil filtrdan olinadi. Bir nechta avto yoki manzil e’lonni ikki marta sanashga sabab bo‘lmaydi.
-
-`/davom` oxirgi qidiruvni davom ettiradi. Qidiruv ro‘yxati standartda 24 soat saqlanadi; keyin yangidan qidirish kerak. Qidiruv paytida yangi e’lon kelsa u avvalgi ro‘yxat tartibini o‘zgartirmaydi. Standart eng ko‘p 5000 natija saqlanadi; kattaroq natijada foydalanuvchiga chegarasi aytiladi.
-
-## E’lon manbalari
-
-### Bot orqali
-
-`E’lon qo‘shish` menyusidan to‘ldiring. E’lon tasdiqlangach darhol faol bo‘ladi. `Mening e’lonlarim` eng so‘nggi 30 ta faol e’lonni va yopish tugmasini beradi. Admin `/hide ELON_ID` bilan istalgan e’lonni yopishi mumkin. Standart amal muddati 7 kun.
-
-### JSON import
-
-`examples/listings.json` shaklini to‘ldirib:
+`TELEGRAM_API_ID` va `TELEGRAM_API_HASH`ni [my.telegram.org](https://my.telegram.org) orqali olib `.env`ga kiriting. So‘ng o‘z terminalingizda bir marta:
 
 ```bash
-python -m logistika_bot import examples/listings.json
+python -m logistika_bot collector-login
 ```
 
-`external_key` har manba e’loni uchun barqaror va noyob bo‘lsin. Shu kalit bilan qayta import e’lonni yangilaydi. `raw_text` berilsa Batafsilda aynan shu matn, aks holda kiritilgan maydonlardan tayyorlangan matn chiqadi. Import formatidagi country/city maydonlari, avto ID’lari va telefon tekshiriladi. `source_url` faqat haqiqiy shakldagi Telegram xabari havolasi bo‘lishi mumkin.
+Telefon, tasdiqlash kodi va ikki bosqichli parol kerak bo‘lsa terminalning o‘zida so‘raladi. Ularni kodga yoki GitHub’ga yozmang. Sessiya standartda `data/collector.session`da saqlanadi va git’dan chiqarilgan.
 
-### Ruxsat berilgan kanal
+Guruh ID’larini ko‘rish uchun aniq chaqiriladigan yordamchi buyruq:
 
-Botni o‘zingiz boshqaradigan kanalga qo‘shing, kanalning raqamli ID’sini `SOURCE_CHAT_IDS`ga yozing. Kod boshqa kanallardan kelgan postlarni qabul qilmaydi. Ushbu versiya quyidagi kelishilgan formatni o‘qiydi:
+```bash
+python -m logistika_bot collector-dialogs
+```
+
+Kerakli guruhlarni tanlab, `groups.private.json` kabi mahalliy faylga joylang:
+
+```json
+[
+  {"chat_id": -1001234567890, "title": "Haqiqiy guruh nomi"}
+]
+```
+
+Bu ID namuna; o‘zingizning haqiqiy guruhlaringizga almashtiring. `*.private.json` git’dan chiqarilgan.
+
+```bash
+python -m logistika_bot sources-import groups.private.json
+python -m logistika_bot collect
+```
+
+`SOURCE_LIMIT=500` standart ro‘yxat chegarasi. 500 ta yozuv mavjudligi akkaunt hammasiga a’zo ekanini isbotlamaydi; haqiqiy kirish huquqi Telegram’ga bog‘liq. `SOURCE_CHAT_IDS`dagi ID’lar ham boshlang‘ich ro‘yxatga qo‘shiladi. Panelda o‘chirilgan guruh qayta ishga tushganda o‘zicha yoqilmaydi.
+
+Yig‘uvchi har guruhni alohida davriy tekshirish o‘rniga yangi xabar va tahrir hodisalarini oladi. Har xabar uchun foydalanuvchi profili yoki tarix so‘ralmaydi. Tahrirlar manba+xabar kaliti bilan yangilanadi, eski tahrir yangisini bosib ketmaydi. Kuzatuvchi qayta ulanganda Telethon’ning catch-up imkoniyati ishlatiladi. Tarixni ommaviy to‘liq ko‘chirib olish bu versiyaga kiritilmagan.
+
+Xabar kelgach doimiy SQLite navbatiga yoziladi. Bot yoki yig‘uvchi jarayon navbatni ishlaydi. Bir nechta ishchi bir xabarni olsa ham yakuniy yozuv tranzaksiya bilan himoyalangan. Xabarni olish va navbatga yozish orasidagi nosozliklar uchun Telegram’dan mutlaq yetkazib berish kafolati yo‘q; katta hajmda monitoring va alohida baza/navbat talab qilinadi.
+
+## Saralash va shablon
+
+Parser tashqi AI xarajatisiz mahalliy qoidalar bilan ishlaydi:
+
+1. Logistika bo‘lmagan oddiy suhbat va aniq spam ajratiladi.
+2. Yo‘nalish, yuk/bo‘sh transport turi, avto, telefon, hajm, narx va mavjud sana olinadi.
+3. Maydonlar yetarlicha aniq bo‘lsa e’lon chiqariladi.
+4. Yo‘nalish yoki tur noaniq bo‘lsa admin navbatida qoladi.
+5. Bir xil mazmun bir nechta manbada kelsa 24 soatlik oynada takrorlari birlashtiriladi.
+
+`Toshkent → Samarqand`, `Ташкент - Самарканд`, `Toshkentdan Samarqandga` kabi yo‘nalishlar qo‘llanadi. Avto turi yoki yo‘nalish topilmagan xabar taxmin bilan ochiq ro‘yxatga chiqarilmaydi. Barcha erkin matnlarni 100% to‘g‘ri anglash kafolatlanmaydi; haqiqiy guruh namunalari asosida lug‘at va qoidalar kengaytiriladi.
+
+Shablonda: e’lon turi, jo‘nash, manzil, avto, tavsif, hajm, narx, sana va mavjud telefon. Batafsilda asl matnning ko‘rinadigan nusxasi ham qoladi. To‘liq asl xabar saralash bazasida saqlanadi, uzun matn Telegram ko‘rsatish chegarasiga mos qisqartiriladi. Masofa/yo‘l vaqti uchun xarita xizmati hali ulanmagan.
+
+Admin xabarni tuzatishda `/template` formatini yuborishi mumkin:
 
 ```text
 #yuk
@@ -125,52 +167,42 @@ Narx: Kelishiladi
 Telefon: +998000000000
 ```
 
-Namunadagi raqamni haqiqiy raqamga almashtiring. Sana kerak bo‘lsa `Sana: YYYY-MM-DD` qatorini haqiqiy sana bilan qo‘shing. Transport uchun birinchi qator `#transport`. Post tahriri shu e’lonni yangilaydi. Butun postni `#yopildi` deb tahrirlash e’lonni yopadi. Manba URL’si avtomatik tuziladi. Yopiq kanalga o‘tish uchun foydalanuvchining a’zoligi talab qilinishi mumkin.
+Namunadagi raqamni haqiqiy raqamga almashtiring. Transport e’loni uchun `#transport`. Noma’lum shahar: `Turkiya / Gebze`. Sana kerak bo‘lsa `Sana: YYYY-MM-DD` qatorini haqiqiy sana bilan yozing.
 
-Bot API kanal posti o‘chirilganini doimo bildirmaydi; shuning uchun yopish belgisi, admin boshqaruvi va amal muddati ishlatiladi. Botni kanalga qo‘shish avvalgi tarixni avtomatik import qilmaydi. Erkin yozilgan barcha Telegram matnlarini avtomatik tushunish bu versiyada yo‘q.
+Bot kanalga qo‘shilgan bo‘lsa, ro‘yxatdagi kanal postlari ham shu navbat orqali ishlanadi. Butun postni `#yopildi`ga tahrirlash uni yopadi. Telegram ayrim o‘chirish hodisalarini manbasi bilan bermaydi; aniqlanmagan o‘chirish uchun admin yopishi va amal muddati ishlatiladi. Standart e’lon muddati 7 kun.
 
-## Serverda Docker bilan
-
-`.env`ni to‘ldiring, so‘ng:
+## Boshqa buyruqlar
 
 ```bash
-docker compose up -d --build
-docker compose logs -f bot
-```
-
-Baza `bot-data` doimiy volume’da saqlanadi. Bitta token bilan bir vaqtda faqat bitta bot jarayonini ishlating. Mavjud webhook aniqlansa dastur uni o‘zicha o‘chirmaydi; eski xizmatni to‘xtatib keyin pollingga o‘ting. Qolgan to‘lov xabarlarini o‘chirish uchun `drop_pending_updates` ishlatilmaydi.
-
-Zaxira nusxasi:
-
-```bash
+python -m logistika_bot import examples/listings.json
+python -m logistika_bot seed-demo
+python -m logistika_bot process-queue
 python -m logistika_bot backup backups/bot-backup.sqlite3
 ```
 
-Yangi fayl nomini tanlang; mavjud fayl ustiga yozilmaydi. Faol SQLite bazasini oddiy nusxalash o‘rniga shu buyruqni ishlating. `.env` va bazani alohida saqlang.
+`seed-demo` faqat aniq DEMO belgili namuna kiritadi; avtomatik ishlamaydi. `external_key` bir xil bo‘lsa JSON import nusxani ko‘paytirmay yangilaydi. `process-queue` mavjud tayyor navbatni bir marta tugatadi. Zaxira uchun mavjud bo‘lmagan fayl yo‘lini tanlang. Eski bazani yangilashdan oldin shu zaxira buyrug‘ini ishlating; v1 → v2 yangilanishi foydalanuvchi, obuna va qoralamalarni saqlaydi.
 
-## Testlar
+## Docker
+
+```bash
+docker compose up -d --build bot
+docker compose run --rm collector python -m logistika_bot collector-login
+docker compose --profile collector up -d collector
+docker compose logs -f bot collector
+```
+
+Manbalar ro‘yxatini botning admin panelidan qo‘shish mumkin. Ikkala xizmat bir xil `bot-data` volume’dan foydalanadi. Bitta token uchun bitta bot, bitta akkaunt sessiyasi uchun bitta yig‘uvchi jarayon ishlating. Bazani o‘chiradigan `down -v` yangilash tartibining bir qismi emas.
+
+## Tekshiruv
 
 ```bash
 python -m unittest discover -s tests -v
 python -m compileall -q logistika_bot
+python -m pip check
 ```
 
-Testlar marshrut, yozuv variantlari, hisoblagichlar, kirish huquqi, qidiruvni davom ettirish, saqlanadigan qoralama, e’lon egasi, kanal ruxsati va takroriy to‘lovni tekshiradi. Aiogram so‘rov modellari va haqiqiy dispatcher tarmoqsiz sinaladi. Haqiqiy Telegramga xabar yoki haqiqiy to‘lov yuborilmaydi.
+Testlar haqiqiy to‘lov, login kodi yoki Telegram xabari yubormaydi. Ular karta-chek tasdiqlashi, admin huquqi, kalendar oy, parallel tasdiqlash, to‘lovdan oldingi yopiq kirish, parser, 500 ta sun’iy manba, deduplikatsiya, tahrir va migratsiyani tekshiradi. Haqiqiy 500 guruhda ishlab chiqarish yuklamasi sinovi uchun akkaunt va haqiqiy ro‘yxat kerak.
 
-## Fayllar
+## To‘lov platformasi talabi
 
-| Fayl | Vazifa |
-| --- | --- |
-| `config.py` | Muhit sozlamalari va tekshiruv |
-| `domain.py` | Transport/joy lug‘ati, marshrut, telefon va import tekshiruvi |
-| `db.py` | SQLite, atomar to‘lov, qidiruv va doimiy holat |
-| `ui.py` | O‘zbekcha matn va klaviaturalar |
-| `service.py` | Bot jarayonlari va kirish qoidalari |
-| `telegram.py` | Aiogram bilan ulanish va dispatcher |
-| `__main__.py` | Ishga tushirish, import, demo va zaxira buyruqlari |
-
-## Hozirgi chegaralar
-
-Bu versiya masofa va yo‘l vaqtini to‘qib ko‘rsatmaydi: aniq yo‘l hisoblash uchun xarita xizmati keyin ulanadi. “Ehtimol dispetcher”ni avtomatik aniqlash, ko‘rsatilmagan YukOn veb ilovasi va tasdiqlanmagan tariflar nusxalanmagan. Bular uchun alohida manba yoki qoida kerak.
-
-SQLite tanlovi bir jarayonli boshlang‘ich xizmatni soddalashtiradi. Ko‘p serverli yoki katta trafikdagi xizmat uchun umumiy navbat, tashqi baza va tarqatilgan qulf qo‘shiladi. Telegramga jo‘natish bilan mahalliy yozuvni bitta tranzaksiyaga birlashtirib bo‘lmaydi: yuborilgandan so‘ng yozuv saqlanishidan oldingi keskin uzilish xabarni takror yuborishga olib kelishi mumkin. E’lon va to‘lov yozuvlari noyob kalitlar bilan himoyalangan.
+Telegram raqamli xizmatlarni ilova ichida sotishda [Stars talabini](https://core.telegram.org/bots/payments-stars) belgilaydi. Karta/chek oqimini ishga chiqarishdan oldin shu talabni hisobga oling. `PAYMENT_MODE=stars` avvalgi integratsiya bilan moslik uchun saqlangan; standart qo‘lda tasdiqlash rejimidir.

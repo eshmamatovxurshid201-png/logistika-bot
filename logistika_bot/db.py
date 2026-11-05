@@ -7,9 +7,10 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .domain import InputError, day_start, normalize, validate_listing
+from .operations import Operations, SCHEMA
 
 
-class Database:
+class Database(Operations):
     """Short per-operation connections; safe to call through asyncio.to_thread."""
 
     def __init__(self, path: str):
@@ -34,7 +35,7 @@ class Database:
     def initialize(self) -> None:
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         with self.connection() as con:
-            if con.execute("PRAGMA user_version").fetchone()[0] > 1:
+            if con.execute("PRAGMA user_version").fetchone()[0] > 2:
                 raise RuntimeError("Baza versiyasi dasturdan yangi; avval kodni yangilang.")
             con.execute("PRAGMA journal_mode=WAL")
             con.executescript("""
@@ -88,8 +89,8 @@ class Database:
                     status TEXT NOT NULL DEFAULT 'pending', charge_id TEXT UNIQUE,
                     fulfilled_until INTEGER
                 );
-                PRAGMA user_version=1;
             """)
+            con.executescript(SCHEMA + "\nPRAGMA user_version=2;")
 
     def user(self, user_id: int, now: int) -> dict:
         with self.connection(write=True) as con:
@@ -132,27 +133,36 @@ class Database:
         if not isinstance(published_at, int) or published_at > now + 60 or published_at < 0:
             raise InputError("E’lon vaqti noto‘g‘ri.")
         with self.connection(write=True) as con:
-            old = con.execute("SELECT id FROM listings WHERE external_key=?", (key,)).fetchone()
-            if old and not update:
-                return old[0]
-            values = (owner_id, data["kind"], data["origin"]["country"],
-                      normalize(data["origin"]["country"]), normalize(data["origin"]["city"]),
-                      json.dumps(data, ensure_ascii=False), published_at, published_at + ttl_days * 86400)
-            if old:
-                listing_id = old[0]
-                con.execute("UPDATE listings SET owner_id=?,kind=?,origin_country=?,country_key=?,"
-                            "city_key=?,data=?,published_at=?,expires_at=? WHERE id=?", (*values, listing_id))
-                con.execute("DELETE FROM vehicles WHERE listing_id=?", (listing_id,))
-                con.execute("DELETE FROM destinations WHERE listing_id=?", (listing_id,))
-            else:
-                cur = con.execute("INSERT INTO listings(owner_id,kind,origin_country,country_key,city_key,"
-                                  "data,published_at,expires_at,external_key) VALUES(?,?,?,?,?,?,?,?,?)",
-                                  (*values, key))
-                listing_id = cur.lastrowid
-            con.executemany("INSERT INTO vehicles VALUES(?,?)", [(listing_id, x) for x in data["vehicles"]])
-            con.executemany("INSERT OR IGNORE INTO destinations VALUES(?,?,?)",
-                            [(listing_id, normalize(x["country"]), normalize(x["city"]))
-                             for x in data["destinations"]])
+            listing_id = self._save_listing_row(con, data, owner_id, key, published_at, ttl_days, update)
+        return listing_id
+
+    @staticmethod
+    def _save_listing_row(con, data: dict, owner_id: int, key: str, published_at: int,
+                          ttl_days: int, update: bool = True, reopen: bool = False) -> int:
+        old = con.execute("SELECT * FROM listings WHERE external_key=?", (key,)).fetchone()
+        if old and not update:
+            return old["id"]
+        if old and json.loads(old["data"]).get("moderation_closed"):
+            data = dict(data, moderation_closed=True)
+            reopen = False
+        values = (owner_id, data["kind"], data["origin"]["country"],
+                  normalize(data["origin"]["country"]), normalize(data["origin"]["city"]),
+                  json.dumps(data, ensure_ascii=False), published_at, published_at + ttl_days * 86400)
+        if old:
+            listing_id = old["id"]
+            con.execute("UPDATE listings SET owner_id=?,kind=?,origin_country=?,country_key=?,"
+                        "city_key=?,data=?,published_at=?,expires_at=? WHERE id=?", (*values, listing_id))
+            if reopen:
+                con.execute("UPDATE listings SET status='active' WHERE id=?", (listing_id,))
+            con.execute("DELETE FROM vehicles WHERE listing_id=?", (listing_id,))
+            con.execute("DELETE FROM destinations WHERE listing_id=?", (listing_id,))
+        else:
+            cur = con.execute("INSERT INTO listings(owner_id,kind,origin_country,country_key,city_key,"
+                              "data,published_at,expires_at,external_key) VALUES(?,?,?,?,?,?,?,?,?)", (*values, key))
+            listing_id = cur.lastrowid
+        con.executemany("INSERT INTO vehicles VALUES(?,?)", [(listing_id, x) for x in data["vehicles"]])
+        con.executemany("INSERT OR IGNORE INTO destinations VALUES(?,?,?)", [
+            (listing_id, normalize(x["country"]), normalize(x["city"])) for x in data["destinations"]])
         return listing_id
 
     @staticmethod
@@ -176,6 +186,12 @@ class Database:
 
     def close_listing(self, listing_id: int, user_id: int, admin: bool = False) -> bool:
         with self.connection(write=True) as con:
+            row = con.execute("SELECT * FROM listings WHERE id=? AND (owner_id=? OR ?)", (listing_id, user_id, int(admin))).fetchone()
+            if row:
+                data = json.loads(row["data"])
+                if data.get("source_chat_id"):
+                    data["moderation_closed"] = True
+                    con.execute("UPDATE listings SET data=? WHERE id=?", (json.dumps(data, ensure_ascii=False), listing_id))
             cur = con.execute("UPDATE listings SET status='closed' WHERE id=? AND (owner_id=? OR ?)",
                               (listing_id, user_id, int(admin)))
             return cur.rowcount > 0

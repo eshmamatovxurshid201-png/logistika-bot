@@ -11,6 +11,8 @@ from typing import Protocol
 from . import ui
 from .config import Settings
 from .db import Database
+from .billing import BillingFlows
+from .admin import AdminFlows
 from .domain import (InputError, VEHICLES, clean_text, date_input, destinations,
                      normalize, parse_channel, parse_query, phone, place, validate_listing)
 
@@ -21,7 +23,7 @@ class Transport(Protocol):
     async def call(self, method: str, **params): ...
 
 
-class Application:
+class Application(BillingFlows, AdminFlows):
     def __init__(self, settings: Settings, db: Database, api: Transport, clock=time.time):
         self.settings, self.db, self.api, self.clock = settings, db, api, clock
         self.locks: weakref.WeakValueDictionary[int, asyncio.Lock] = weakref.WeakValueDictionary()
@@ -79,6 +81,8 @@ class Application:
         await self.send(user_id, "📦 Yuk va transport qidirish uchun bot. Xush kelibsiz!", ui.main_keyboard())
 
     async def quick(self, user_id: int):
+        if not await self.require_access(user_id):
+            return
         await self.query("set_state", user_id, "quick")
         await self.send(user_id, "Kerakli qidiruv bo‘limini tanlang", ui.quick_keyboard())
 
@@ -109,14 +113,14 @@ class Application:
         if command in {"/paysupport", "/support"}:
             return await self.support(uid)
         if command == "/terms":
-            return await self.send(uid, ui.terms(self.settings.plan_days))
+            return await self.send(uid, ui.terms(self.settings.plan_days, self.settings.payment_mode == "manual"))
         if command == "/help":
             return await self.send(uid, "Tezkor Qidiruv orqali yuk yoki mashina tanlang.\n"
                                    "Bitta joy ikki tomondan qidiriladi; ikki joy yo‘nalishni belgilaydi.\n"
                                    "Misol: Toshkent → Samarqand. Kirill yozuvi ham taniladi.\n"
                                    "/start — menyu; /cancel — bekor qilish; /davom — natijani davom ettirish; "
                                    "/id — ID; /terms — shartlar; /paysupport — yordam.")
-        if command in {"/admin", "/stats", "/grant", "/revoke", "/hide", "/template"}:
+        if command in {"/admin", "/stats", "/grant", "/grant_months", "/revoke", "/hide", "/template", "/sources"}:
             return await self.admin(uid, text)
         if command == "/davom":
             sid = user["context"].get("last_session", "")
@@ -131,6 +135,8 @@ class Application:
                 return await self.quick(uid)
             return await self.home(uid)
         if text == ui.CARGO:
+            if not await self.require_access(uid):
+                return
             await self.query("set_state", uid, "choose_vehicle", {"kind": "cargo"})
             return await self.send(uid, "🚙 Avto turini o‘zgartirish", ui.vehicle_keyboard())
         if text == ui.VEHICLE:
@@ -149,6 +155,10 @@ class Application:
                                    "Til: O‘zbekcha\nYordam: /paysupport", ui.reply([[ui.SUBSCRIBE], [ui.BACK]]))
         if text == ui.SUBSCRIBE or command == "/subscribe":
             return await self.plan(user)
+        if user["state"] == "payment_receipt":
+            return await self.receipt_message(event, user)
+        if user["state"].startswith("admin_"):
+            return await self.admin_message(event, user)
         if user["state"] == "choose_vehicle":
             names = {normalize(v): k for k, v in VEHICLES.items()}
             vehicle = "all" if normalize(text) == "hammasi" else names.get(normalize(text))
@@ -168,6 +178,8 @@ class Application:
         await self.send(uid, "Boshlash uchun menyudan bo‘lim tanlang yoki /start yozing.", ui.main_keyboard())
 
     async def start_search(self, uid: int, filters: dict):
+        if not await self.require_access(uid):
+            return
         await self.query("set_state", uid, "search", filters)
         if filters["kind"] == "cargo":
             text = ("Yuklarni topish uchun jo‘nash va yetib borish shahar yoki mamlakatini kiriting.\n\n"
@@ -179,6 +191,8 @@ class Application:
             await self.geography(uid, filters)
 
     async def geography(self, uid: int, filters: dict, message_id: int | None = None):
+        if not await self.require_access(uid):
+            return
         data = await self.query("geography", filters, self.now(), self.settings.timezone)
         session = await self.query("session_new", uid, data, self.now(), self.settings.session_hours)
         title = filters.get("country") or "Mamlakatni tanlang"
@@ -191,6 +205,8 @@ class Application:
             await self.edit(uid, message_id, text, ui.geo_keyboard(session))
 
     async def results(self, uid: int, filters: dict):
+        if not await self.require_access(uid):
+            return
         ids, total = await self.query("search", filters, self.now(), self.settings.search_limit)
         if not ids:
             return await self.send(uid, "Mos e’lon topilmadi. Boshqa joy yoki avto turini tanlang.")
@@ -206,6 +222,8 @@ class Application:
 
     async def show_page(self, session: dict, expected: int):
         uid, sid = session["user_id"], session["id"]
+        if not await self.require_access(uid):
+            return
         if expected != session["next_offset"]:
             return await self.send(uid, "Bu sahifa avval ochilgan. /davom bilan keyingisini oching.")
         ids = session["data"]["ids"]
@@ -238,14 +256,10 @@ class Application:
         parts = event.get("data", "").split(":")
         action = parts[0]
         message_id = event.get("message", {}).get("message_id")
-        if action == "plan":
-            return await self.plan(user)
-        if action == "accept":
-            await self.query("accept_terms", uid, ui.TERMS_VERSION)
-            user["terms_version"] = ui.TERMS_VERSION
-            return await self.plan(user)
-        if action == "buy":
-            return await self.buy(user)
+        if await self.billing_callback(parts, user):
+            return
+        if await self.admin_callback(parts, user):
+            return
         if action == "draft" and len(parts) == 2:
             if parts[1] == "cancel":
                 return await self.home(uid)
@@ -278,6 +292,8 @@ class Application:
             return await self.edit(uid, message_id, "🛑 E’lon yopildi.", ui.inline([]))
         if len(parts) < 2:
             raise InputError("Tugma tanilmadi. /start bilan boshlang.")
+        if not await self.require_access(uid):
+            return
         session = await self.query("session", parts[1], uid, self.now())
         if not session:
             raise InputError("Qidiruv muddati tugagan. Yangi qidiruvni boshlang.")
@@ -331,6 +347,8 @@ class Application:
             return await self.send(uid, "E’lonning asl xabari. Yopiq kanal bo‘lsa a’zolik talab qilinishi mumkin.",
                                    ui.inline([[{"text": "Xabarni ochish ↗️", "url": url}]]))
         if action == "phone":
+            if not listing["data"].get("phone"):
+                return await self.send(uid, "E’londa telefon ko‘rsatilmagan. Mavjud bo‘lsa Xabarga o‘tish tugmasidan foydalaning.")
             await self.api.call("sendContact", chat_id=uid, phone_number=listing["data"]["phone"],
                                 first_name=f"E’lon #{lid}")
         counts = await self.query("event", uid, lid, "phone" if action == "phone" else "view", self.now())
@@ -402,88 +420,30 @@ class Application:
             await self.send(uid, ui.brief(listing, i, self.now()),
                             ui.inline([[ui.button("🛑 E’lonni yopish", f"close:{listing['id']}")]]))
 
-    async def plan(self, user: dict):
-        uid = user["id"]
-        if not self.settings.paid_access:
-            return await self.send(uid, "Hozir kirish ochiq. Obuna sotib olish talab qilinmaydi.")
-        if user["terms_version"] != ui.TERMS_VERSION:
-            return await self.send(uid, ui.terms(self.settings.plan_days),
-                                   ui.inline([[ui.button("Shartlarni qabul qilaman", "accept")]]))
-        if not self.settings.plan_price_stars:
-            await self.send(uid, "Avtomatik obuna savdosi hali yoqilmagan.")
-            return await self.support(uid)
-        text = (f"⭐ {self.settings.plan_days} kunlik kirish: {self.settings.plan_price_stars} Stars.\n"
-                "Batafsil e’lonlar, telefon raqamlari va mavjud manba havolalari. "
-                "Avtomatik uzaytirish yo‘q.")
-        await self.send(uid, text, ui.inline([[ui.button("⭐ Sotib olish", "buy")]]))
-
-    async def buy(self, user: dict):
-        if (not self.settings.paid_access or not self.settings.plan_price_stars
-                or user["terms_version"] != ui.TERMS_VERSION):
-            return await self.plan(user)
-        order = await self.query("order_new", user["id"], self.settings.plan_price_stars,
-                                 self.settings.plan_days, self.now())
-        await self.api.call("sendInvoice", chat_id=user["id"], title="Logistika obunasi",
-                            description=f"{self.settings.plan_days} kunlik e’lon va kontaktlarga kirish.",
-                            payload="access:" + order, currency="XTR", provider_token="",
-                            prices=[{"label": "Obuna", "amount": self.settings.plan_price_stars}],
-                            start_parameter="access")
-
     async def checkout(self, event: dict):
         payload = event.get("invoice_payload", "")
-        ok = payload.startswith("access:") and await self.query(
+        ok = self.settings.payment_mode == "stars" and payload.startswith("access:") and await self.query(
             "order_check", payload[7:], event["from"]["id"], event["total_amount"], event["currency"], self.now())
         params = {"pre_checkout_query_id": event["id"], "ok": bool(ok)}
         if not ok:
             params["error_message"] = "Buyurtma eskirgan yoki sizga tegishli emas. Yangi hisob yarating: /subscribe"
         await self.api.call("answerPreCheckoutQuery", **params)
 
-    async def admin(self, uid: int, text: str):
-        if uid not in self.settings.admin_ids:
-            raise InputError("Bu buyruq faqat admin uchun.")
-        parts = text.split()
-        command = parts[0].split("@")[0]
-        if command in {"/admin", "/stats"}:
-            stats = await self.query("stats", self.now())
-            return await self.send(uid, f"👥 Foydalanuvchilar: {stats['users']}\n⭐ Obunachilar: {stats['subscribers']}\n"
-                                   f"📦 Faol e’lonlar: {stats['active']}\n💳 To‘lovlar: {stats['payments']}\n\n"
-                                   "/grant ID KUN — obuna berish\n/revoke ID — kirishni yopish\n"
-                                   "/hide ELON_ID — e’lonni yopish\n/template — kanal posti namunasi")
-        if command == "/template":
-            return await self.send(uid, "<pre>#yuk\nJo‘nash: Toshkent\nManzil: Samarqand\nAvto: Tent, Ref\n"
-                                   "Tavsif: Qoplangan yuk\nHajm: 20 t\nSana: 2026-11-05\nNarx: Kelishiladi\n"
-                                   "Telefon: +998000000000</pre>\nNamunadagi sana va raqamni haqiqiysiga almashtiring.")
-        try:
-            if command == "/grant" and len(parts) == 3:
-                until = await self.query("grant", int(parts[1]), int(parts[2]), self.now())
-                return await self.send(uid, "✅ Obuna: " + ui.local_date(until, self.settings.timezone))
-            if command == "/revoke" and len(parts) == 2 and int(parts[1]) > 0:
-                await self.query("revoke", int(parts[1]))
-                return await self.send(uid, "Obuna bekor qilindi.")
-            if command == "/hide" and len(parts) == 2:
-                ok = await self.query("close_listing", int(parts[1]), uid, True)
-                return await self.send(uid, "E’lon yopildi." if ok else "E’lon topilmadi.")
-        except ValueError as exc:
-            raise InputError("ID va kunni raqam bilan yozing. /admin") from exc
-        raise InputError("Buyruq shakli noto‘g‘ri. /admin ni oching.")
 
     async def channel(self, event: dict):
+        from .pipeline import Pipeline
         chat = event.get("chat", {})
         chat_id = chat.get("id")
-        if chat_id not in self.settings.source_chat_ids:
+        source = await self.query("source", chat_id)
+        if source is None and chat_id in self.settings.source_chat_ids:
+            await self.query("source_put", chat_id, chat.get("title", str(chat_id)), self.now(), self.settings.source_limit)
+            source = await self.query("source", chat_id)
+        if not source or not source["enabled"]:
             return
         text = event.get("text") or event.get("caption") or ""
-        key = f"channel:{chat_id}:{event['message_id']}"
-        if text.strip().lower() == "#yopildi":
-            return await self.query("close_source", key)
-        try:
-            data = parse_channel(text)
-            username = chat.get("username")
-            if username:
-                data["source_url"] = f"https://t.me/{username}/{event['message_id']}"
-            elif str(chat_id).startswith("-100"):
-                data["source_url"] = f"https://t.me/c/{str(chat_id)[4:]}/{event['message_id']}"
-            await self.query("save_listing", data, 0, key, self.now(), self.settings.listing_ttl_days,
-                             update=True, published_at=event.get("date", self.now()))
-        except InputError:
-            log.warning("Approved channel post could not be parsed: chat=%s message=%s", chat_id, event.get("message_id"))
+        username = chat.get("username")
+        link = f"https://t.me/{username}/{event['message_id']}" if username else (
+            f"https://t.me/c/{str(chat_id)[4:]}/{event['message_id']}" if str(chat_id).startswith("-100") else None)
+        await self.query("ingest_enqueue", chat_id, event["message_id"], text, link,
+                         event.get("date", self.now()), event.get("edit_date", event.get("date", self.now())), self.now())
+        await asyncio.to_thread(Pipeline(self.db, self.settings, self.clock).process_one)

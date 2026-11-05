@@ -16,7 +16,7 @@ BACK = "⬅️ Orqaga"
 CANCEL = "❌ Bekor qilish"
 SKIP = "O‘tkazib yuborish"
 SUBSCRIBE = "⭐ Obuna"
-TERMS_VERSION = "1"
+TERMS_VERSION = "2"
 
 
 def reply(rows: list[list[str | dict]]) -> dict:
@@ -111,7 +111,7 @@ def brief(listing: dict, ordinal: int, now: int) -> str:
     origin = escape(mask_contacts(label(data["origin"])))
     dest = escape(mask_contacts(", ".join(label(x) for x in data["destinations"])))
     vehicle = ", ".join(VEHICLES[x] for x in data["vehicles"])
-    source = "Telegram" if data.get("source_url") else "Bot"
+    source = "Telegram" if data.get("source_url") or data.get("source_chat_id") else "Bot"
     lines = [f"<b>{ordinal}. {origin} → {dest}</b>", f"🔵 {source}", "", f"🚚 {vehicle}"]
     if data["kind"] == "cargo":
         lines.append("📦 " + escape(mask_contacts(data["description"][:180])))
@@ -138,6 +138,25 @@ def raw_text(data: dict) -> str:
 
 
 def detail(listing: dict, counts: dict) -> str:
+    if listing["data"].get("normalized"):
+        from .parser import trim_units
+        data = listing["data"]
+        title = "📦 YUK E’LONI" if data["kind"] == "cargo" else "🚚 TRANSPORT E’LONI"
+        lines = [f"<b>{title} #{listing['id']}</b>",
+                 "📍 Jo‘nash: " + escape(label(data["origin"])),
+                 "🏁 Manzil: " + escape("; ".join(label(x) for x in data["destinations"])),
+                 "🚛 Avto: " + ", ".join(VEHICLES[x] for x in data["vehicles"]),
+                 "📦 Tavsif: " + escape(trim_units(data["description"], 350)),
+                 "⚖️ Hajm: " + escape(data.get("capacity", "—")),
+                 "💰 Narx: " + escape(data.get("price", "Kelishiladi"))]
+        if data.get("ready_date"):
+            lines.append("📅 Sana: " + escape(data["ready_date"]))
+        if data.get("phone"):
+            lines.append("📞 " + escape(data["phone"]))
+        raw = trim_units(raw_text(data), 1200)
+        lines.extend(["", "<b>Asl matn" + (" (qisqartirilgan)" if raw != raw_text(data) else "") + "</b>", escape(raw),
+                      f"\n👀 {counts['view']}   📞 {counts['phone']}"])
+        return "\n".join(lines)
     return escape(raw_text(listing["data"])) + f"\n\n👀 {counts['view']}   📞 {counts['phone']}"
 
 
@@ -145,12 +164,15 @@ def local_date(timestamp: int, timezone: str) -> str:
     return datetime.fromtimestamp(timestamp, ZoneInfo(timezone)).strftime("%Y-%m-%d %H:%M")
 
 
-def terms(days: int) -> str:
+def terms(days: int, manual: bool = True) -> str:
+    payment = ("1, 2, 3 yoki 6 kalendar oylik tarif tanlanadi. Karta to‘lovi va chekni admin bankdagi tushum "
+               "bilan tekshirgandan keyin obuna yoqiladi. Chek yuborishning o‘zi kirishni ochmaydi. "
+               if manual else f"Tasdiqlangan to‘lov {days} kunlik kirish beradi. ")
     return (f"<b>Xizmat shartlari — v{TERMS_VERSION}</b>\n\n"
             "Bot yuk va transport e’lonlarini qidirish va e’lon berish uchun xizmat qiladi. "
-            "Yo‘nalish, yuk holati, narx va transportni e’lon muallifi bilan aniqlashtiring.\n\n"
-            f"Obuna bir martalik to‘lovdan keyin {days} kunlik batafsil ma’lumot va kontaktlarga kirish beradi. "
+            "Yo‘nalish, yuk holati, narx va transportni e’lon muallifi bilan aniqlashtiring.\n\n" +
+            payment +
             "Avtomatik uzaytirish yo‘q.\n\n"
-            "Bot Telegram ID, e’lon, ko‘rish/raqam ochish voqealari va to‘lov identifikatorini saqlaydi. "
+            "Bot Telegram ID, e’lon, chek fayli identifikatori va tasdiqlash tarixini saqlaydi. "
             "Siz qo‘shgan telefon e’lon bilan birga tegishli foydalanuvchilarga ko‘rsatiladi.\n\n"
             "To‘lov, qaytarish yoki shaxsiy ma’lumot bo‘yicha yordam: /paysupport.")

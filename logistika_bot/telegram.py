@@ -6,10 +6,10 @@ import logging
 from aiogram import Bot, Dispatcher, Router
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.methods import (AnswerCallbackQuery, AnswerPreCheckoutQuery,
-                             EditMessageText, SendContact, SendInvoice, SendMessage)
+                             EditMessageText, SendContact, SendInvoice, SendMessage, SendPhoto, SendDocument)
 
 METHODS = {x.__api_method__: x for x in [SendMessage, EditMessageText, SendContact,
-                                      SendInvoice, AnswerCallbackQuery, AnswerPreCheckoutQuery]}
+                                      SendInvoice, AnswerCallbackQuery, AnswerPreCheckoutQuery, SendPhoto, SendDocument]}
 
 
 class AiogramTransport:

@@ -67,9 +67,9 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_paid_gate_covers_detail_phone_and_source_even_old_buttons(self):
         self.add(source_url="https://t.me/example/123", raw_text="PRIVATE CONTACT TEXT")
-        self.app.settings = replace(self.settings, paid_access=True)
         await self.search()
         callback, card = self.card()
+        self.app.settings = replace(self.settings, paid_access=True)
         self.api.calls.clear()
         for action in ["detail", "phone", "source"]:
             await self.cb(callback.replace("detail:", action + ":"), card["message_id"])
@@ -173,10 +173,10 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.db.user(2, self.now)["subscription_until"], 0)
 
     async def test_payment_from_invoice_through_receipt_is_idempotent(self):
-        self.app.settings = replace(self.settings, paid_access=True, plan_price_stars=100,
+        self.app.settings = replace(self.settings, paid_access=True, payment_mode="stars", plan_price_stars=100,
                                     plan_days=30, support_username="support_user")
         await self.msg(ui.SUBSCRIBE)
-        await self.cb("accept")
+        await self.cb("accept:" + ui.TERMS_VERSION)
         await self.cb("buy")
         invoice = [p for m, p in self.api.calls if m == "sendInvoice"][-1]
         checkout = {"id": "checkout", "from": {"id": 2}, "invoice_payload": invoice["payload"],
@@ -196,6 +196,7 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.db.user(2, self.now)["subscription_until"], until)
 
     async def test_checkout_does_not_wait_for_user_search_lock(self):
+        self.app.settings = replace(self.settings, payment_mode="stars")
         order = self.db.order_new(2, 100, 30, self.now)
         lock = asyncio.Lock()
         self.app.locks[2] = lock

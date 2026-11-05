@@ -1,8 +1,8 @@
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
-COPY requirements.txt requirements.lock ./
-RUN pip install --no-cache-dir -r requirements.txt \
+COPY requirements.txt requirements.lock requirements-collector.txt requirements-collector.lock ./
+RUN pip install --no-cache-dir -r requirements-collector.txt \
     && useradd --uid 10001 --create-home bot \
     && mkdir -p /app/data \
     && chown -R 10001:10001 /app

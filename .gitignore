@@ -9,5 +9,7 @@ backups/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
+*.session*
+*.private.json
 dist/
 build/

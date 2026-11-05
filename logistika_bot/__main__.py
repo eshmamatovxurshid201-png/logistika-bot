@@ -18,11 +18,13 @@ async def run(settings: Settings, db: Database):
     from aiogram.types import BotCommand
     from .service import Application
     from .telegram import AiogramTransport, make_dispatcher
+    from .pipeline import Pipeline
 
     settings.validate(require_token=True)
     bot = Bot(settings.token)
     app = Application(settings, db, AiogramTransport(bot))
     dispatcher = make_dispatcher(app)
+    tasks = []
     try:
         webhook = await bot.get_webhook_info()
         if webhook.url:
@@ -37,26 +39,36 @@ async def run(settings: Settings, db: Database):
             BotCommand(command="terms", description="Xizmat shartlari"),
             BotCommand(command="paysupport", description="Yordam va to‘lov"),
         ])
-        await dispatcher.start_polling(bot, handle_as_tasks=True, tasks_concurrency_limit=64,
-                                       allowed_updates=dispatcher.resolve_used_update_types())
+        tasks = [asyncio.create_task(Pipeline(db, settings).run()),
+                 asyncio.create_task(dispatcher.start_polling(bot, handle_as_tasks=True, tasks_concurrency_limit=64,
+                                                             allowed_updates=dispatcher.resolve_used_update_types()))]
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            await task
     finally:
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         await bot.session.close()
 
 
 def main():
     parser = argparse.ArgumentParser(description="Logistika Telegram boti")
-    parser.add_argument("command", choices=["run", "check", "init-db", "seed-demo", "import", "backup"])
+    parser.add_argument("command", choices=["run", "check", "init-db", "seed-demo", "import", "backup",
+                                           "collector-login", "collector-dialogs", "collect", "process-queue", "sources-import"])
     parser.add_argument("file", nargs="?")
     args = parser.parse_args()
     load_dotenv()
     settings = Settings.from_env()
     if args.command == "check":
         print(f"Sozlamalar to‘g‘ri. Token kiritilgan: {bool(settings.token)}. "
-              f"Pullik kirish: {settings.paid_access}. Avtomatik sotuv: {bool(settings.plan_price_stars)}.")
+              f"Pullik kirish: {settings.paid_access}. To‘lov: {settings.payment_mode}. Guruh limiti: {settings.source_limit}.")
         return
     db = Database(settings.database_path)
     db.initialize()
     now = int(time.time())
+    db.source_seed(settings.source_chat_ids, now, settings.source_limit)
     if args.command == "init-db":
         print("Baza tayyor.")
     elif args.command == "seed-demo":
@@ -80,6 +92,35 @@ def main():
         for data, key in validated:
             db.save_listing(data, 0, "import:" + key, now, settings.listing_ttl_days, update=True)
         print(f"{len(rows)} ta e’lon import qilindi.")
+    elif args.command == "sources-import":
+        if not args.file or Path(args.file).stat().st_size > 2_000_000:
+            parser.error("2 MB dan kichik guruhlar JSON faylini kiriting.")
+        rows = json.loads(Path(args.file).read_text(encoding="utf-8"))
+        from .domain import clean_text
+        if not isinstance(rows, list) or len(rows) > settings.source_limit:
+            parser.error("Guruhlar ro‘yxati SOURCE_LIMIT chegarasidan oshmasin.")
+        validated = []
+        for row in rows:
+            if not isinstance(row, dict) or type(row.get("chat_id")) is not int or row["chat_id"] >= 0:
+                parser.error("Har bir guruhda manfiy chat_id va title bo‘lsin.")
+            validated.append((row["chat_id"], clean_text(row.get("title", str(row["chat_id"])), 100)))
+        db.source_seed([x[0] for x in validated], now, settings.source_limit)
+        for chat_id, title in validated:
+            db.source_put(chat_id, title, now, settings.source_limit)
+        print(f"{len(validated)} ta manba ro‘yxatga kiritildi.")
+    elif args.command in {"collector-login", "collector-dialogs", "collect", "process-queue"}:
+        logging.basicConfig(level=logging.WARNING)
+        if args.command == "process-queue":
+            from .pipeline import Pipeline
+            pipeline, count = Pipeline(db, settings), 0
+            while pipeline.process_one():
+                count += 1
+            print(f"{count} ta xabar qayta ishlandi.")
+        else:
+            from .collector import login, list_dialogs, run_collector
+            functions = {"collector-login": lambda: login(settings), "collector-dialogs": lambda: list_dialogs(settings),
+                         "collect": lambda: run_collector(settings, db)}
+            asyncio.run(functions[args.command]())
     elif args.command == "backup":
         if not args.file or Path(args.file).exists():
             parser.error("Zaxira uchun mavjud bo‘lmagan yangi fayl yo‘lini kiriting.")

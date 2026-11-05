@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import calendar
 import unicodedata
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
@@ -178,6 +179,17 @@ def day_start(now: int, timezone: str) -> int:
         hour=0, minute=0, second=0, microsecond=0).timestamp())
 
 
+def add_months(timestamp: int, months: int, timezone: str) -> int:
+    if months not in {1, 2, 3, 6}:
+        raise InputError("Tarif 1, 2, 3 yoki 6 oy bo‘lsin.")
+    value = datetime.fromtimestamp(timestamp, ZoneInfo(timezone))
+    serial = value.year * 12 + value.month - 1 + months
+    year, month = divmod(serial, 12)
+    month += 1
+    day = min(value.day, calendar.monthrange(year, month)[1])
+    return int(value.replace(year=year, month=month, day=day).timestamp())
+
+
 def date_input(text: str, now: int, timezone: str) -> str:
     today = datetime.fromtimestamp(now, ZoneInfo(timezone)).date()
     key = normalize(text)
@@ -223,7 +235,7 @@ def validate_listing(data: dict) -> dict:
                   description=clean_text(data.get("description", ""), 1800, 3),
                   capacity=clean_text(data.get("capacity", "") or "—", 80),
                   price=clean_text(data.get("price", "") or "Kelishiladi", 80),
-                  phone=phone(data.get("phone", "")),
+                  phone=phone(data["phone"]) if data.get("phone") else "",
                   source_url=telegram_url(data.get("source_url")))
     # Keep the complete detailed message within Telegram's 4096 character limit.
     if result.get("raw_text"):
