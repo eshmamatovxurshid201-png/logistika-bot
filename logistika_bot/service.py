@@ -13,6 +13,7 @@ from .config import Settings
 from .db import Database
 from .billing import BillingFlows
 from .admin import AdminFlows
+from .dispatcher import DispatcherFlows
 from .domain import (InputError, VEHICLES, clean_text, date_input, destinations,
                      normalize, parse_channel, parse_query, phone, place, validate_listing)
 
@@ -23,7 +24,7 @@ class Transport(Protocol):
     async def call(self, method: str, **params): ...
 
 
-class Application(BillingFlows, AdminFlows):
+class Application(BillingFlows, AdminFlows, DispatcherFlows):
     def __init__(self, settings: Settings, db: Database, api: Transport, clock=time.time):
         self.settings, self.db, self.api, self.clock = settings, db, api, clock
         self.locks: weakref.WeakValueDictionary[int, asyncio.Lock] = weakref.WeakValueDictionary()
@@ -146,6 +147,8 @@ class Application(BillingFlows, AdminFlows):
             return await self.send(uid, "Qanday e’lon qo‘shamiz?", ui.reply([["📦 Yuk e’loni"], ["🚚 Transport e’loni"], [ui.CANCEL]]))
         if text == ui.MINE:
             return await self.mine(uid)
+        if text == ui.FAVORITES:
+            return await self.show_favorites(uid)
         if text == ui.SETTINGS:
             await self.query("set_state", uid, "settings")
             until = user["subscription_until"]
@@ -238,8 +241,11 @@ class Application(BillingFlows, AdminFlows):
                 if await self.query("card", sid, lid):
                     continue  # A previous partial page was already sent.
                 more = end if index == live[-1][0] and end < len(ids) else None
+                if str(lid) in session["data"].get("match_info", {}):
+                    listing = dict(listing, match_info=session["data"]["match_info"][str(lid)])
+                saved = await self.query("favorite_has", uid, lid)
                 result = await self.send(uid, ui.brief(listing, index + 1, self.now()),
-                                         ui.card_keyboard(sid, lid, more_offset=more, total=len(ids)))
+                                         ui.card_keyboard(sid, lid, more_offset=more, total=len(ids), saved=saved))
                 await self.query("card_save", sid, lid, result["message_id"], index + 1, more)
             await self.query("page_done", sid, offset, end)
             if live:
@@ -331,13 +337,19 @@ class Application(BillingFlows, AdminFlows):
         listing = await self.query("listing", lid)
         if not listing or listing["status"] != "active" or listing["expires_at"] <= self.now():
             return await self.edit(uid, message_id, "Bu e’lon yopilgan yoki amal muddati tugagan.", ui.inline([]))
-        if action not in {"detail", "brief", "phone", "source"}:
+        if action not in {"detail", "brief", "phone", "source", "save", "unsave", "match"}:
             raise InputError("Tugma tanilmadi.")
         if action != "brief" and not self.accessible(user, listing):
             return await self.send(uid, "🔒 Batafsil ma’lumot va kontaktlar uchun faol obuna kerak.",
                                    ui.inline([[ui.button("⭐ Obunani ko‘rish", "plan")]]))
+        if action in {"save", "unsave"}:
+            await self.query("favorite_set", uid, lid, action == "save", self.now())
+            return await self.send(uid, "⭐ Tanlanganlarga saqlandi." if action == "save" else "Tanlanganlardan olib tashlandi.")
+        if action == "match":
+            return await self.show_matches(uid, listing)
+        saved = await self.query("favorite_has", uid, lid)
         keyboard = ui.card_keyboard(session["id"], lid, detail=action != "brief",
-                                    more_offset=card["more_offset"], total=len(data["ids"]))
+                                    more_offset=card["more_offset"], total=len(data["ids"]), saved=saved)
         if action == "brief":
             return await self.edit(uid, message_id, ui.brief(listing, card["ordinal"], self.now()), keyboard)
         if action == "source":

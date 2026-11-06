@@ -8,9 +8,10 @@ from pathlib import Path
 
 from .domain import InputError, day_start, normalize, validate_listing
 from .operations import Operations, SCHEMA
+from .dispatch_ops import DispatcherOperations, SCHEMA as DISPATCH_SCHEMA
 
 
-class Database(Operations):
+class Database(Operations, DispatcherOperations):
     """Short per-operation connections; safe to call through asyncio.to_thread."""
 
     def __init__(self, path: str):
@@ -35,7 +36,7 @@ class Database(Operations):
     def initialize(self) -> None:
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         with self.connection() as con:
-            if con.execute("PRAGMA user_version").fetchone()[0] > 2:
+            if con.execute("PRAGMA user_version").fetchone()[0] > 3:
                 raise RuntimeError("Baza versiyasi dasturdan yangi; avval kodni yangilang.")
             con.execute("PRAGMA journal_mode=WAL")
             con.executescript("""
@@ -90,7 +91,7 @@ class Database(Operations):
                     fulfilled_until INTEGER
                 );
             """)
-            con.executescript(SCHEMA + "\nPRAGMA user_version=2;")
+            con.executescript(SCHEMA + DISPATCH_SCHEMA + "\nPRAGMA user_version=3;")
 
     def user(self, user_id: int, now: int) -> dict:
         with self.connection(write=True) as con:

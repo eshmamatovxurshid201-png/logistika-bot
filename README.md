@@ -21,11 +21,13 @@ Muddat 30 kunlik ko‘paytma bilan emas, kalendar oy bo‘yicha hisoblanadi. Mas
 - Hududlar bo‘yicha haqiqiy hisoblagichlar va Asia/Tashkent bo‘yicha bugungi e’lonlar.
 - Beshtadan natija, qidiruvni saqlash, Batafsil va kartochkaga qaytish.
 - Telefon kontakt kartasi va mavjud manba xabari.
+- Dispetcherning shaxsiy tanlanganlari: saqlash, olib tashlash va keyin qayta ko‘rish.
+- Yuk kartochkasidan mos transport, transportdan mos yuk qidirish. Yo‘nalish, avto, ma’lum tonnaj va sanani solishtirish.
 - Bot orqali e’lon qo‘shish, o‘z e’lonini ko‘rish/yopish. Muallif o‘z e’lonini boshqara oladi.
 - Qo‘lda karta/chek tasdiqlashi, to‘rtta tarif va admin panel.
 - Tanlangan guruhlardan yangi post/tahrirlarni yig‘ish, doimiy navbat, saralash va takrorlarini birlashtirish.
 - Noaniq xabarlar uchun admin tekshiruvi, tahrirlash va chop etish.
-- SQLite v1 bazasini ma’lumotlarni saqlagan holda v2 ga yangilash.
+- SQLite v1/v2 bazasini ma’lumotlarni saqlagan holda v3 ga yangilash.
 - JSON import, DEMO, zaxira buyrug‘i va Docker sozlamasi.
 
 ## Kompyuterda ishga tushirish
@@ -142,7 +144,7 @@ Xabar kelgach doimiy SQLite navbatiga yoziladi. Bot yoki yig‘uvchi jarayon nav
 
 ## Saralash va shablon
 
-Parser tashqi AI xarajatisiz mahalliy qoidalar bilan ishlaydi:
+Standart parser tashqi AI xarajatisiz mahalliy qoidalar bilan ishlaydi. Noaniq e’lonlar uchun quyida tasvirlangan ixtiyoriy AI yordamchisi ham mavjud:
 
 1. Logistika bo‘lmagan oddiy suhbat va aniq spam ajratiladi.
 2. Yo‘nalish, yuk/bo‘sh transport turi, avto, telefon, hajm, narx va mavjud sana olinadi.
@@ -150,7 +152,9 @@ Parser tashqi AI xarajatisiz mahalliy qoidalar bilan ishlaydi:
 4. Yo‘nalish yoki tur noaniq bo‘lsa admin navbatida qoladi.
 5. Bir xil mazmun bir nechta manbada kelsa 24 soatlik oynada takrorlari birlashtiriladi.
 
-`Toshkent → Samarqand`, `Ташкент - Самарканд`, `Toshkentdan Samarqandga` kabi yo‘nalishlar qo‘llanadi. Avto turi yoki yo‘nalish topilmagan xabar taxmin bilan ochiq ro‘yxatga chiqarilmaydi. Barcha erkin matnlarni 100% to‘g‘ri anglash kafolatlanmaydi; haqiqiy guruh namunalari asosida lug‘at va qoidalar kengaytiriladi.
+`Toshkent → Samarqand`, `Ташкент - Самарканд`, `Toshkentdan Samarqandga`, `из Ташкента в Самарканд` kabi yo‘nalishlar qo‘llanadi. `Tent kerak` yoki `нужен тент` — yuk uchun transport talab qilinayotganini, `yuk kerak` yoki `пустой тент, нужен груз` — bo‘sh transportga yuk qidirilayotganini bildiradi. Bot muallifning haqiqiy shaxsini yoki dispetcher ekanini shu matndan tasdiqlamaydi.
+
+Inkor (`yuk yo‘q`, `kerak emas`), qarama-qarshi niyat va alohida qatorlardagi bir nechta yo‘nalish noaniq deb belgilanadi. Avto turi yoki yo‘nalish topilmagan xabar taxmin bilan ochiq ro‘yxatga chiqarilmaydi. Barcha erkin matnlarni 100% to‘g‘ri anglash kafolatlanmaydi; haqiqiy guruh namunalari asosida lug‘at va qoidalar kengaytiriladi.
 
 Shablonda: e’lon turi, jo‘nash, manzil, avto, tavsif, hajm, narx, sana va mavjud telefon. Batafsilda asl matnning ko‘rinadigan nusxasi ham qoladi. To‘liq asl xabar saralash bazasida saqlanadi, uzun matn Telegram ko‘rsatish chegarasiga mos qisqartiriladi. Masofa/yo‘l vaqti uchun xarita xizmati hali ulanmagan.
 
@@ -180,7 +184,34 @@ python -m logistika_bot process-queue
 python -m logistika_bot backup backups/bot-backup.sqlite3
 ```
 
-`seed-demo` faqat aniq DEMO belgili namuna kiritadi; avtomatik ishlamaydi. `external_key` bir xil bo‘lsa JSON import nusxani ko‘paytirmay yangilaydi. `process-queue` mavjud tayyor navbatni bir marta tugatadi. Zaxira uchun mavjud bo‘lmagan fayl yo‘lini tanlang. Eski bazani yangilashdan oldin shu zaxira buyrug‘ini ishlating; v1 → v2 yangilanishi foydalanuvchi, obuna va qoralamalarni saqlaydi.
+`seed-demo` faqat aniq DEMO belgili namuna kiritadi; avtomatik ishlamaydi. `external_key` bir xil bo‘lsa JSON import nusxani ko‘paytirmay yangilaydi. `process-queue` mavjud tayyor navbatni bir marta tugatadi. Zaxira uchun mavjud bo‘lmagan fayl yo‘lini tanlang. Eski bazani yangilashdan oldin shu zaxira buyrug‘ini ishlating; v1/v2 → v3 yangilanishi foydalanuvchi, obuna va qoralamalarni saqlaydi.
+
+## Dispetcher uchun saqlash va moslashtirish
+
+Har kartochkada **Saqlash** va **Mos e’lonlar** mavjud. Saqlanganlar faqat o‘sha foydalanuvchining **Tanlanganlar** menyusida ko‘rinadi; boshqa odamning tanlanganlari ochilmaydi. Obuna talabi bu menyuda ham saqlanadi. Yopilgan yoki eskirgan e’lon faol tanlanganlardan chiqariladi.
+
+Moslashtirish eng yangi 500 ta qarama-qarshi turdagi faol e’lon orasidan nomzodlarni tekshiradi:
+
+- Yukka transport, transportga yuk izlanadi; jo‘nash va borish tartibi saqlanadi.
+- Kamida bitta avto toifasi mos bo‘lishi shart.
+- Ikkala tomonda tonnaj ma’lum bo‘lsa transport sig‘imi kam bo‘lgan nomzod olinmaydi.
+- Ikkala sana ma’lum bo‘lsa yuklashdan kech bo‘shaydigan transport olinmaydi.
+- Bitta telefonli e’lonlar bir-biriga hamkor sifatida chiqarilmaydi.
+- Tonnaj, sana yoki aniq shahar noma’lum bo‘lsa buni aniqlashtirish kerakligi yoziladi.
+
+Moslik balli ehtimol foizi yoki kelishuv kafolati emas. Narx, aniq vaqt, mashina va yukning holatini dispetcher tomonlar bilan kelishadi. Hajm m³, harorat va qo‘shimcha hujjatlar bo‘yicha avtomatik sig‘im tekshiruvi bu versiyada yo‘q.
+
+## Ixtiyoriy AI yordamchisi
+
+Standart `.env`da `AI_ENABLED=false`. Hech qanday haqiqiy AI so‘rovi yoki xarajati bu holatda bo‘lmaydi. Yoqish uchun o‘z serveringizda `OPENAI_API_KEY`, tuzilmali javobni qo‘llaydigan `AI_MODEL`, `AI_ENABLED=true` va `AI_DAILY_LIMIT`ni sozlang. Model avtomatik tanlanmaydi. Hisob va foydalanish shartlari o‘zingizning API akkauntingizga tegishli.
+
+Noaniq e’lon uchun yordamchi jo‘nash, manzil, niyat, avto va tavsifni [OpenAI rasmiy hujjatlaridagi tuzilmali JSON javob](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses) shaklida taklif qiladi. Shakl to‘g‘ri bo‘lishi fakt to‘g‘ri degani emas: manba iqtiboslari, joylar va avto turi dastur tomonidan qayta tekshiriladi. Aniq qoida bilan topilgan niyatga zid javob olinmaydi.
+
+**AI taklifi har doim admin navbatida qoladi.** Model o‘zicha to‘lov tasdiqlamaydi, hech qanday vosita chaqirmaydi va e’lonni avtomatik chop etmaydi. Bunday e’lonni admin tekshirib tasdiqlaydi. API xato qilsa, javobni rad etsa yoki limit tugasa odatdagi admin tekshiruvi saqlanadi.
+
+AI’ga yuborishdan oldin telefon, URL va @username belgilar bilan yopiladi; telefon manbadan mahalliy ajratiladi va AI’dan qayta olinmaydi. Yo‘nalish va yuk tavsifi kabi qolgan matn yoqilgan AI xizmatiga uzatiladi. Bu barcha shaxsiy ma’lumotni avtomatik tozalash kafolati emas. `store=false` so‘rov parametri ishlatiladi.
+
+Standart kunlik limit 100 ta so‘rov, bir so‘rov uchun kirish va chiqish hajmi cheklangan. Bir xil yopilgan matn bir xil model uchun keshlanadi. Bu dollar ko‘rinishidagi sarf limiti emas; so‘rovlar xatolari ham limitga sanaladi. Haqiqiy guruh ma’lumotlari bilan aniqlik va API xarajati hali baholanmagan.
 
 ## Docker
 

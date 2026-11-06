@@ -53,6 +53,10 @@ class Settings:
     telegram_api_id: int = 0
     telegram_api_hash: str = field(default="", repr=False)
     collector_session: str = "data/collector"
+    ai_enabled: bool = False
+    openai_api_key: str = field(default="", repr=False)
+    ai_model: str = ""
+    ai_daily_limit: int = 100
 
     def tariff_price(self, months: int) -> int:
         return dict(zip((1, 2, 3, 6), self.tariff_prices_uzs, strict=True)).get(months, 0)
@@ -64,6 +68,10 @@ class Settings:
 
     def validate(self, require_token: bool = False) -> None:
         ZoneInfo(self.timezone)
+        if self.ai_enabled and (not self.openai_api_key or not self.ai_model):
+            raise ValueError("AI_ENABLED=true uchun OPENAI_API_KEY va AI_MODEL kerak.")
+        if not 1 <= self.ai_daily_limit <= 10000:
+            raise ValueError("AI_DAILY_LIMIT 1–10000 bo‘lsin.")
         if require_token and not self.token:
             raise ValueError(".env ichiga BOT_TOKEN kiriting.")
         if self.payment_mode not in {"manual", "stars"}:
@@ -123,6 +131,10 @@ class Settings:
             telegram_api_id=int(os.getenv("TELEGRAM_API_ID", "0")),
             telegram_api_hash=os.getenv("TELEGRAM_API_HASH", "").strip(),
             collector_session=os.getenv("COLLECTOR_SESSION", "data/collector"),
+            ai_enabled=_bool(os.getenv("AI_ENABLED", "false")),
+            openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+            ai_model=os.getenv("AI_MODEL", "").strip(),
+            ai_daily_limit=int(os.getenv("AI_DAILY_LIMIT", "100")),
         )
         settings.validate()
         return settings

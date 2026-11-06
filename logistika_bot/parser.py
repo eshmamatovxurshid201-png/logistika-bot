@@ -40,7 +40,7 @@ def point(item: dict) -> dict:
 def extract_vehicles(text: str) -> list[str]:
     text = normalize(text)
     aliases = {key: [normalize(name)] for key, name in VEHICLES.items()}
-    aliases["tent"] += ["tentovka", "tentli"]
+    aliases["tent"] += ["tentovka", "tentli", "tentoviy"]
     aliases["ref"] += ["refrijerator", "refrijirator", "refrejerator", "refrizherator"]
     aliases["ref_off"] += ["ref bez rezhima", "ref bez rejima"]
     aliases["flatbed"] += ["ploshchadka", "platforma"]
@@ -102,9 +102,10 @@ def parse_message(text: str, source_url: str | None, published_at: int, timezone
         key, sep, value = line.partition(":")
         if sep:
             fields[normalize(key)] = value.strip()
-    cargo = bool(re.search(r"\b(yuk bor|gruz est|yuklanadi|mashina kerak|fura kerak|nuzhen tent|nuzhna mashina)\b", normalized)
+    cargo = bool(re.search(r"\b(yuk bor|yukim bor|gruz est|est gruz|yuklanadi|mashina kerak|fura kerak|nuzhen tent|nuzhna mashina|nujna mashina)\b", normalized)
+                 or re.search(r"\b(?:nuzhen|nujen|nuzhna|nujna|nuzhny|nujni)\s+(?:tent|ref|kamaz|fura|mashina)\b", normalized)
                  or re.search(r"\b(tent|ref|kamaz|isuzu|transport) (?:\d+ ta )?kerak\b", normalized))
-    vehicle = bool(re.search(r"\b(yuk kerak|gruz nuzhen|gruz nuzhna|yuk qidiraman|mashina bosh|svobodnaya mashina|pustaya fura)\b", normalized)
+    vehicle = bool(re.search(r"\b(yuk kerak|nuzhen gruz|nujen gruz|gruz nujen|gruz nuzhen|gruz nuzhna|yuk qidiraman|yuk qidiryapman|mashina bosh|svobodnaya mashina|pustaya fura|pustoy tent)\b", normalized)
                    or re.search(r"\bbosh\b.{0,25}\b(mashina|tent|ref|fura|isuzu|kamaz)\b", normalized))
     kind = "cargo" if cargo and not vehicle else "vehicle" if vehicle and not cargo else ""
     origin, dests, directed = None, [], False
@@ -123,6 +124,13 @@ def parse_message(text: str, source_url: str | None, published_at: int, timezone
                 if len(a) == 1 and b:
                     origin, dests, directed = point(a[0]), [point(x) for x in b], True
                     break
+    if not directed:
+        # Russian 'из Ташкента в Самарканд' has an explicit direction too.
+        match = re.search(r"\biz\s+(.+?)\s+v\s+(.+?)(?:[\n.,;]|$)", normalize(text))
+        if match:
+            a, b = places(match[1]), places(match[2])
+            if len(a) == 1 and len(b) == 1:
+                origin, dests, directed = point(a[0]), [point(b[0])], True
     detected = places(text)
     if not directed:
         starts = [x for x in detected if x["suffix"] == "dan"]
@@ -140,7 +148,7 @@ def parse_message(text: str, source_url: str | None, published_at: int, timezone
     price = fields.get("narx") or fields.get("tsena") or fields.get("stavka") or ""
     if not price:
         match = re.search(r"[\d][\d .,]{0,18}\s*(?:so[‘’']?m|сум|uzs|usd|dollar|руб|rubl|\$)", text, re.I)
-        price = match.group() if match else "Kelishiladi"
+        price = match.group() if match else "Ko‘rsatilmagan"
     ready_date = ""
     match = re.search(r"\b\d{4}-\d{2}-\d{2}\b|\b(?:bugun|ertaga)\b", text, re.I)
     if match:
@@ -161,6 +169,20 @@ def parse_message(text: str, source_url: str | None, published_at: int, timezone
         reasons.append("avto turi topilmadi")
     if not data["phone"] and not source_url:
         reasons.append("aloqa ma’lumoti yo‘q")
+    if re.search(r"\b(?:yuk(?:im)? yoq|gruza net|kerak emas|ne nujen|ne nuzhen)\b", normalized):
+        reasons.append("inkor yoki qarama-qarshi talab bor")
+    route_lines = 0
+    for line in lines:
+        halves = re.split(r"\s*(?:→|➡\ufe0f?|➜|->|=>|\s[-–—]\s)\s*", line, maxsplit=1)
+        if len(halves) == 2 and places(halves[0]) and places(halves[1]):
+            route_lines += 1
+    if route_lines > 1:
+        reasons.append("bir xabarda bir nechta yo‘nalish bor")
+    data["extraction_method"] = "rules"
+    data["extraction_checks"] = {"intent": bool(kind), "directed_route": directed,
+                                  "vehicle": bool(data["vehicles"]), "contact": bool(data["phone"] or source_url)}
+    if re.search(r"\b(?:yuk|gruz)\s+(?:olindi|yopildi|otmenen|otmeneno)\b", normalized):
+        reasons.append("e’lon yopilgan bo‘lishi mumkin")
     if reasons:
         return {"status": "review", "data": data, "reason": "; ".join(reasons)}
     try:

@@ -135,7 +135,9 @@ class AdminFlows:
             job = await self.admin_job(parts)
             suffix = job_suffix(job)
             if action == "review":
-                await self.send(uid, "<b>Saralash</b>\nSabab: " + escape(job["reason"]) + "\n\n" + escape(job["raw_text"][:1500]),
+                from .parser import trim_units
+                await self.send(uid, "<b>Saralash</b>\nSabab: " + escape(trim_units(job["reason"], 400)) + "\n\n" +
+                                ui.extraction_summary(job["parsed"]) + "\n\n<b>Asl matn</b>\n" + escape(trim_units(job["raw_text"], 1400)),
                                 ui.inline([[ui.button("✅ Chop etish", "reviewok:" + suffix)],
                                            [ui.button("📝 Tuzatib chop etish", "reviewedit:" + suffix)],
                                            [ui.button("🗑 O‘tkazish", "reviewdrop:" + suffix)]]))

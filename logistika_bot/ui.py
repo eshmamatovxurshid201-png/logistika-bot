@@ -10,6 +10,7 @@ QUICK = "🔍 Tezkor Qidiruv"
 MINE = "📢 Mening e’lonlarim"
 ADD = "➕ E’lon qo‘shish"
 SETTINGS = "⚙️ Sozlamalar"
+FAVORITES = "⭐ Tanlanganlar"
 CARGO = "📦 Yuk topish"
 VEHICLE = "🚚 Moshina topish"
 BACK = "⬅️ Orqaga"
@@ -39,7 +40,7 @@ def pairs(items: list) -> list[list]:
 
 
 def main_keyboard() -> dict:
-    return reply([[QUICK], [MINE], [ADD], [SETTINGS]])
+    return reply([[QUICK], [FAVORITES], [MINE], [ADD], [SETTINGS]])
 
 
 def quick_keyboard() -> dict:
@@ -63,11 +64,13 @@ def post_vehicles(selected: list[str]) -> dict:
 
 
 def card_keyboard(session_id: str, listing_id: int, detail: bool = False,
-                  more_offset: int | None = None, total: int = 0) -> dict:
+                  more_offset: int | None = None, total: int = 0, saved: bool = False) -> dict:
     suffix = f"{session_id}:{listing_id}"
     rows = ([[button("📞 Telefon raqam", "phone:" + suffix), button("Xabarga o‘tish", "source:" + suffix)],
              [button(BACK, "brief:" + suffix)]] if detail else
             [[button("Batafsil", "detail:" + suffix)]])
+    rows.append([button("⭐ Olib tashlash" if saved else "⭐ Saqlash", ("unsave:" if saved else "save:") + suffix),
+                 button("🔗 Mos e’lonlar", "match:" + suffix)])
     if more_offset is not None:
         rows.append([button(f"Ko‘proq ko‘rsatish ({more_offset + 1} - {total})",
                             f"more:{session_id}:{more_offset}")])
@@ -123,6 +126,9 @@ def brief(listing: dict, ordinal: int, now: int) -> str:
     if data.get("demo"):
         lines.append("🧪 DEMO — haqiqiy e’lon emas")
     lines.extend(["", age(listing["published_at"], now)])
+    if listing.get("match_info"):
+        info = listing["match_info"]
+        lines.extend([f"🔗 Moslik balli: {info['score']}/100", escape("; ".join(info["reasons"]))])
     return "\n".join(lines)
 
 
@@ -153,6 +159,8 @@ def detail(listing: dict, counts: dict) -> str:
             lines.append("📅 Sana: " + escape(data["ready_date"]))
         if data.get("phone"):
             lines.append("📞 " + escape(data["phone"]))
+        if data.get("extraction_method"):
+            lines.append("🔎 Ajratish: " + ("AI taklifi, admin tasdiqlagan" if data["extraction_method"] == "ai_proposal" else "Matn qoidalari"))
         raw = trim_units(raw_text(data), 1200)
         lines.extend(["", "<b>Asl matn" + (" (qisqartirilgan)" if raw != raw_text(data) else "") + "</b>", escape(raw),
                       f"\n👀 {counts['view']}   📞 {counts['phone']}"])
@@ -162,6 +170,24 @@ def detail(listing: dict, counts: dict) -> str:
 
 def local_date(timestamp: int, timezone: str) -> str:
     return datetime.fromtimestamp(timestamp, ZoneInfo(timezone)).strftime("%Y-%m-%d %H:%M")
+
+
+def extraction_summary(data: dict) -> str:
+    from .parser import trim_units
+    def location(value):
+        return value.get("city") or value.get("country") or "Aniqlanmagan"
+    kind = {"cargo": "Yuk", "vehicle": "Transport"}.get(data.get("kind"), "Aniqlanmagan")
+    lines = ["Taklif qilingan maydonlar:", "Tur: " + kind,
+             "Jo‘nash: " + location(data.get("origin") or {}),
+             "Manzil: " + ("; ".join(location(x) for x in data.get("destinations", [])) or "Aniqlanmagan"),
+             "Avto: " + (", ".join(VEHICLES[x] for x in data.get("vehicles", []) if x in VEHICLES) or "Aniqlanmagan"),
+             "Hajm: " + data.get("capacity", "Aniqlanmagan"),
+             "Narx: " + data.get("price", "Aniqlanmagan")]
+    if data.get("extraction_method") == "ai_proposal":
+        lines.append("Usul: AI taklifi — admin tekshirishi kerak")
+        lines.extend("AI noaniqligi: " + x for x in data.get("ai_uncertainties", []))
+        lines.extend("Dalil (" + k + "): " + v for k, v in data.get("ai_evidence", {}).items())
+    return escape(trim_units("\n".join(lines), 1100))
 
 
 def terms(days: int, manual: bool = True) -> str:
